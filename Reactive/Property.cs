@@ -34,10 +34,10 @@ public sealed class Property<T>(T initial) : IReadOnlyProperty<T>
         Changed?.Invoke();
     }
 
-    public void Bind<B>(IReadOnlyProperty<B> source, Func<B, T> transform)
+    public void Bind<S>(IReadOnlyProperty<S> source, Func<S, T> transform)
     {
         Unbind();
-        Action handler = () => Set(transform(source.Value));
+        void handler() => Set(transform(source.Value));
         source.Changed += handler;
         _unbind = () => source.Changed -= handler;
         Set(transform(source.Value));
