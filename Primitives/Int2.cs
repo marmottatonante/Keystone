@@ -1,4 +1,4 @@
-namespace Pith.Geometry;
+namespace Keystone.Primitives;
 
 public readonly record struct Int2(int X, int Y)
 {

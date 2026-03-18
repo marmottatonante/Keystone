@@ -1,4 +1,4 @@
-﻿namespace Pith.Reactive;
+﻿namespace Keystone.Observables;
 
 public interface IReadOnlyProperty<T>
 {

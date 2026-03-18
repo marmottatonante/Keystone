@@ -1,6 +1,6 @@
-﻿using Pith.Reactive;
+﻿using Keystone.Observables;
 
-namespace Pith.Collections;
+namespace Keystone.Collections;
 
 public interface INode<T> where T : INode<T>
 {

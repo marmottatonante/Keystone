@@ -1,4 +1,4 @@
-namespace Pith.Collections;
+namespace Keystone.Collections;
 
 public class Tree<T>(T root) where T : INode<T>
 {

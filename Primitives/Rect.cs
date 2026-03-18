@@ -1,4 +1,4 @@
-namespace Pith.Geometry;
+namespace Keystone.Primitives;
 
 public readonly record struct Rect(Int2 Position, Int2 Size)
 {
