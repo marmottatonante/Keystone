@@ -1,4 +1,5 @@
-﻿using System.Runtime.InteropServices;
+﻿using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Keystone;
 
@@ -8,13 +9,7 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
     private static Arena<T>? _shared;
     public static Arena<T> Shared => _shared ??= new Arena<T>();
 
-    public readonly record struct Handle(int Offset, int Length)
-    {
-        public Handle Trim(int length) =>
-            length > Length
-                ? throw new ArgumentOutOfRangeException(nameof(length))
-                : new Handle(Offset, length);
-    }
+    public readonly record struct Handle(int Offset, int Length);
 
     private T[] _buffer = new T[initialCapacity];
     private int _cursor = 0;
@@ -54,7 +49,23 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
         int sSize = Marshal.SizeOf<S>();
         int tSize = Marshal.SizeOf<T>();
         if (sSize > tSize) Align(sSize);
-        return Allocate(count * sSize / tSize);
+        int totalBytesNeeded = count * sSize;
+        int unitsOfT = (totalBytesNeeded + tSize - 1) / tSize;
+        return Allocate(unitsOfT);
+    }
+
+    public Handle Reallocate(Handle handle, int newCount)
+    {
+        if (handle.Offset + handle.Length != _cursor) return handle;
+        _cursor = handle.Offset;
+        return Allocate(newCount);
+    }
+
+    public Handle Reallocate<S>(Handle handle, int newCount) where S : unmanaged
+    {
+        if (handle.Offset + handle.Length != _cursor) return handle;
+        _cursor = handle.Offset;
+        return Allocate<S>(newCount);
     }
 
     public void Write(Handle handle, T value) => 
