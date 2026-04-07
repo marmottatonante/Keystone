@@ -8,12 +8,27 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
     private static Arena<T>? _shared;
     public static Arena<T> Shared => _shared ??= new Arena<T>();
 
-    public readonly record struct Handle(int Offset, int Length);
+    public readonly record struct Handle(int Offset, int Length)
+    {
+        public Handle Trim(int length) =>
+            length > Length
+                ? throw new ArgumentOutOfRangeException(nameof(length))
+                : new Handle(Offset, length);
+    }
 
     private T[] _buffer = new T[initialCapacity];
     private int _cursor = 0;
 
     public int Count => _cursor;
+
+    private void EnsureCapacity(int needed)
+    {
+        if (_cursor + needed <= _buffer.Length) return;
+        int newSize = Math.Max(_buffer.Length * 2, _cursor + needed);
+        Array.Resize(ref _buffer, newSize);
+    }
+
+    public void Reset() => _cursor = 0;
 
     public void Align(int alignment)
     {
@@ -26,53 +41,37 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
         }
     }
 
-    public Handle Write(T value)
+    public Handle Allocate(int count)
     {
-        EnsureCapacity(1);
+        EnsureCapacity(count);
         int offset = _cursor;
-        _buffer[_cursor++] = value;
-        return new Handle(offset, 1);
+        _cursor += count;
+        return new Handle(offset, count);
     }
 
-    public Handle Write(ReadOnlySpan<T> values)
+    public Handle Allocate<S>(int count) where S : unmanaged
     {
-        EnsureCapacity(values.Length);
-        int offset = _cursor;
-        values.CopyTo(_buffer.AsSpan(_cursor));
-        _cursor += values.Length;
-        return new Handle(offset, values.Length);
+        int sSize = Marshal.SizeOf<S>();
+        int tSize = Marshal.SizeOf<T>();
+        if (sSize > tSize) Align(sSize);
+        return Allocate(count * sSize / tSize);
     }
 
-    public Handle Write<S>(S value) where S : unmanaged
-    {
-        if (Marshal.SizeOf<S>() > Marshal.SizeOf<T>())
-            Align(Marshal.SizeOf<S>());
-        ReadOnlySpan<S> span = MemoryMarshal.CreateReadOnlySpan(ref value, 1);
-        return Write(MemoryMarshal.Cast<S, T>(span));
-    }
+    public void Write(Handle handle, T value) => 
+        _buffer[handle.Offset] = value;
+    public void Write(Handle handle, ReadOnlySpan<T> values) =>
+        values.CopyTo(_buffer.AsSpan(handle.Offset));
+    public void Write<S>(Handle handle, ReadOnlySpan<S> values) where S : unmanaged =>
+        Write(handle, MemoryMarshal.Cast<S, T>(values));
+    public void Write<S>(Handle handle, S value) where S : unmanaged =>
+        Write(handle, MemoryMarshal.CreateReadOnlySpan(ref value, 1));
 
-    public Handle Write<S>(ReadOnlySpan<S> values) where S : unmanaged
-    {
-        if (Marshal.SizeOf<S>() > Marshal.SizeOf<T>())
-            Align(Marshal.SizeOf<S>());
-        return Write(MemoryMarshal.Cast<S, T>(values));
-    }
-
-    public ReadOnlySpan<T> Read(Handle handle) =>
+    // Dangling Span risk because of Allocate. Document, eventually.
+    public Span<T> GetSpan(Handle handle) =>
         _buffer.AsSpan(handle.Offset, handle.Length);
+    public Span<S> GetSpan<S>(Handle handle) where S : unmanaged =>
+        MemoryMarshal.Cast<T, S>(GetSpan(handle));
 
-    public ReadOnlySpan<S> Read<S>(Handle handle) where S : unmanaged
-    {
-        ReadOnlySpan<T> span = Read(handle);
-        return MemoryMarshal.Cast<T, S>(span);
-    }
-
-    public void Reset() => _cursor = 0;
-
-    private void EnsureCapacity(int needed)
-    {
-        if (_cursor + needed <= _buffer.Length) return;
-        int newSize = Math.Max(_buffer.Length * 2, _cursor + needed);
-        Array.Resize(ref _buffer, newSize);
-    }
+    public ReadOnlySpan<T> Read(Handle handle) => GetSpan(handle);
+    public ReadOnlySpan<S> Read<S>(Handle handle) where S : unmanaged => GetSpan<S>(handle);
 }
