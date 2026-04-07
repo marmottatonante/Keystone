@@ -46,8 +46,8 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
 
     public Handle Allocate<S>(int count) where S : unmanaged
     {
-        int sSize = Marshal.SizeOf<S>();
-        int tSize = Marshal.SizeOf<T>();
+        int sSize = Unsafe.SizeOf<S>();
+        int tSize = Unsafe.SizeOf<T>();
         if (sSize > tSize) Align(sSize);
         int totalBytesNeeded = count * sSize;
         int unitsOfT = (totalBytesNeeded + tSize - 1) / tSize;
