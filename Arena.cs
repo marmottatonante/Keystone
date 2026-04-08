@@ -56,14 +56,16 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
 
     public Handle Reallocate(Handle handle, int newCount)
     {
-        if (handle.Offset + handle.Length != _cursor) return handle;
+        if (handle.Offset + handle.Length != _cursor)
+            throw new InvalidOperationException("Can only reallocate the most recently allocated block.");
         _cursor = handle.Offset;
         return Allocate(newCount);
     }
 
     public Handle Reallocate<S>(Handle handle, int newCount) where S : unmanaged
     {
-        if (handle.Offset + handle.Length != _cursor) return handle;
+        if (handle.Offset + handle.Length != _cursor)
+            throw new InvalidOperationException("Can only reallocate the most recently allocated block.");
         _cursor = handle.Offset;
         return Allocate<S>(newCount);
     }
