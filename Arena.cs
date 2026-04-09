@@ -1,7 +1,4 @@
-﻿using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-
-namespace Keystone;
+﻿namespace Keystone;
 
 public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
 {
@@ -16,7 +13,7 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
 
     public int Count => _cursor;
 
-    private void EnsureCapacity(int needed)
+    private void Resize(int needed)
     {
         if (_cursor + needed <= _buffer.Length) return;
         int newSize = Math.Max(_buffer.Length * 2, _cursor + needed);
@@ -25,33 +22,12 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
 
     public void Reset() => _cursor = 0;
 
-    public void Align(int alignment)
-    {
-        int remainder = _cursor % alignment;
-        if (remainder != 0)
-        {
-            int padding = alignment - remainder;
-            EnsureCapacity(padding);
-            _cursor += padding;
-        }
-    }
-
     public Handle Allocate(int count)
     {
-        EnsureCapacity(count);
+        Resize(count);
         int offset = _cursor;
         _cursor += count;
         return new Handle(offset, count);
-    }
-
-    public Handle Allocate<S>(int count) where S : unmanaged
-    {
-        int sSize = Unsafe.SizeOf<S>();
-        int tSize = Unsafe.SizeOf<T>();
-        if (sSize > tSize) Align(sSize);
-        int totalBytesNeeded = count * sSize;
-        int unitsOfT = (totalBytesNeeded + tSize - 1) / tSize;
-        return Allocate(unitsOfT);
     }
 
     public Handle Reallocate(Handle handle, int newCount)
@@ -62,29 +38,14 @@ public sealed class Arena<T>(int initialCapacity = 256) where T : unmanaged
         return Allocate(newCount);
     }
 
-    public Handle Reallocate<S>(Handle handle, int newCount) where S : unmanaged
-    {
-        if (handle.Offset + handle.Length != _cursor)
-            throw new InvalidOperationException("Can only reallocate the most recently allocated block.");
-        _cursor = handle.Offset;
-        return Allocate<S>(newCount);
-    }
-
     public void Write(Handle handle, T value) => 
         _buffer[handle.Offset] = value;
     public void Write(Handle handle, ReadOnlySpan<T> values) =>
         values.CopyTo(_buffer.AsSpan(handle.Offset));
-    public void Write<S>(Handle handle, ReadOnlySpan<S> values) where S : unmanaged =>
-        Write(handle, MemoryMarshal.Cast<S, T>(values));
-    public void Write<S>(Handle handle, S value) where S : unmanaged =>
-        Write(handle, MemoryMarshal.CreateReadOnlySpan(ref value, 1));
 
     // Dangling Span risk because of Allocate. Document, eventually.
     public Span<T> GetSpan(Handle handle) =>
         _buffer.AsSpan(handle.Offset, handle.Length);
-    public Span<S> GetSpan<S>(Handle handle) where S : unmanaged =>
-        MemoryMarshal.Cast<T, S>(GetSpan(handle));
 
     public ReadOnlySpan<T> Read(Handle handle) => GetSpan(handle);
-    public ReadOnlySpan<S> Read<S>(Handle handle) where S : unmanaged => GetSpan<S>(handle);
 }
