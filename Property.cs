@@ -1,56 +1,54 @@
 ﻿namespace Keystone;
 
+/// <summary>
+/// Represents a read only Property.
+/// </summary>
+/// <typeparam name="T">Type of the encapsulated value.</typeparam>
 public interface IReadOnlyProperty<T> : IWatchable
 {
+    /// <summary>
+    /// Encapsulated gettable value.
+    /// </summary>
     T Value { get; }
 }
 
+/// <summary>
+/// Represents a Property.
+/// </summary>
+/// <typeparam name="T">Type of the encapsulated value.</typeparam>
 public interface IProperty<T> : IReadOnlyProperty<T>, IBindable<T>
 {
+    /// <summary>
+    /// Encapsulated settable value.
+    /// </summary>
     new T Value { get; set; }
 }
 
 /// <summary>
-/// Encapsulates a value and fires events on change.
+/// Encapsulates a value that can be get and set, firing events on change.
 /// </summary>
 /// <typeparam name="T">Type of the encapsulated value.</typeparam>
-public sealed class Property<T> : IProperty<T>
+public sealed partial class Property<T>(T initial) : IProperty<T>
 {
-    private T _value;
-    private Action? _unbind;
+    private T _value = initial;
+    private bool _isBound = false;
 
     public event Action? Changing;
     public event Action? Changed;
+
+    public bool IsBound => _isBound;
 
     public T Value
     {
         get => _value;
         set
         {
-            if (_unbind is not null)
-                throw new InvalidOperationException("Property is bound.");
-            Set(value);
+            if (_isBound) throw new InvalidOperationException("Property is bound.");
+            SetAndFireEvents(value);
         }
     }
 
-    /// <summary>
-    /// Constructs a Property with an initial value.
-    /// </summary>
-    /// <param name="initial">Initial value.</param>
-    public Property(T initial) => _value = initial;
-    /// <summary>
-    /// Constructs a Property that's already bound.
-    /// </summary>
-    /// <param name="compute">Function that computes the value.</param>
-    /// <param name="sources">Sources for the update events.</param>
-    public Property(Func<T> compute, params IWatchable[] sources)
-    {
-        // _value is set by Bind, default! is used to silence the compiler.
-        _value = default!;
-        Bind(compute, sources);
-    }
-
-    private void Set(T value)
+    private void SetAndFireEvents(T value)
     {
         if (EqualityComparer<T>.Default.Equals(_value, value)) return;
         Changing?.Invoke();
@@ -58,26 +56,18 @@ public sealed class Property<T> : IProperty<T>
         Changed?.Invoke();
     }
 
-    /// <summary>
-    /// Bind this Property so that it updates automatically.
-    /// </summary>
-    /// <param name="compute">Function that computes the value.</param>
-    /// <param name="sources">Sources for the update events.</param>
-    public void Bind(Func<T> compute, params IWatchable[] sources)
+    public Cleanup Bind(Func<T> compute, params IWatchable[] sources)
     {
-        Unbind();
-        void handler() => Set(compute());
+        if (_isBound) throw new InvalidOperationException("Property is already bound.");
+        void handler() => SetAndFireEvents(compute());
         foreach (var source in sources) source.Changed += handler;
-        _unbind = () => { foreach (var source in sources) source.Changed -= handler; };
+        _isBound = true;
         handler();
-    }
 
-    /// <summary>
-    /// Unbind this Property from the current binding.
-    /// </summary>
-    public void Unbind()
-    {
-        _unbind?.Invoke();
-        _unbind = null;
+        return new Cleanup(() =>
+        {
+            foreach (var source in sources) source.Changed -= handler;
+            _isBound = false;
+        });
     }
 }
