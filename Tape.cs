@@ -4,28 +4,47 @@ using System.Runtime.InteropServices;
 
 namespace Keystone;
 
+using SizePrefix = ushort;
 public sealed class Tape
 {
     private readonly ArrayBufferWriter<byte> _buffer = new();
 
+    public void Reset() => _buffer.Clear();
+
+    public readonly ref struct Reservation(Span<byte> span)
+    {
+        public Span<byte> Span { get; } = span[sizeof(SizePrefix)..];
+        internal Span<byte> Full { get; } = span;
+    }
+
+    public Reservation Reserve(int size)
+    {
+        var span = _buffer.GetSpan(sizeof(SizePrefix) + size);
+        return new Reservation(span);
+    }
+
+    public void Commit(Reservation reservation, int size)
+    {
+        if(size > reservation.Span.Length)
+            throw new InvalidOperationException("Size can't be higher than reserved.");
+        MemoryMarshal.Write(reservation.Full, (SizePrefix)size);
+        _buffer.Advance(sizeof(SizePrefix) + size);
+    }
+
     public void Write<T>(T value) where T : unmanaged
     {
         int size = Unsafe.SizeOf<T>();
-        var span = _buffer.GetSpan(sizeof(ushort) + size);
-        MemoryMarshal.Write(span, (ushort)size);
-        MemoryMarshal.Write(span[sizeof(ushort)..], value);
-        _buffer.Advance(sizeof(ushort) + size);
+        var reservation = Reserve(size);
+        MemoryMarshal.Write(reservation.Span, value);
+        Commit(reservation, size);
     }
 
     public void Write(ReadOnlySpan<byte> data)
     {
-        var span = _buffer.GetSpan(sizeof(ushort) + data.Length);
-        MemoryMarshal.Write(span, (ushort)data.Length);
-        data.CopyTo(span[sizeof(ushort)..]);
-        _buffer.Advance(sizeof(ushort) + data.Length);
+        var reservation = Reserve(data.Length);
+        data.CopyTo(reservation.Span);
+        Commit(reservation, data.Length);
     }
-
-    public void Reset() => _buffer.Clear();
 
     public Enumerator GetEnumerator() => new(_buffer.WrittenSpan);
     public ref struct Enumerator(ReadOnlySpan<byte> span)
@@ -38,8 +57,8 @@ public sealed class Tape
         public bool MoveNext()
         {
             if (_cursor >= _span.Length) return false;
-            ushort size = MemoryMarshal.Read<ushort>(_span[_cursor..]);
-            _cursor += sizeof(ushort);
+            SizePrefix size = MemoryMarshal.Read<SizePrefix>(_span[_cursor..]);
+            _cursor += sizeof(SizePrefix);
             Current = _span.Slice(_cursor, size);
             _cursor += size;
             return true;
