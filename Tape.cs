@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace Keystone;
 
-using SizePrefix = ushort;
+using SizePrefix = byte;
 public sealed class Tape
 {
     private readonly ArrayBufferWriter<byte> _buffer = new();
